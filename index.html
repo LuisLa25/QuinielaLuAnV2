@@ -1,0 +1,274 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Quiniela LuAn™ v2 — Multi-Liga</title>
+<meta name="theme-color" content="#0d1117">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+
+<style>
+:root {
+  --bg-main: #0d1117; --bg-card: #161b22; --bg-input: #21262d;
+  --border-color: #30363d; --text-main: #c9d1d9; --text-muted: #8b949e;
+  --accent-color: #2ea043; --accent-hover: #3fb950; --danger-color: #da3633;
+  --gold-color: #f1e05a; --font-family: 'Inter', sans-serif; --radius: 8px;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-tap-highlight-color: transparent; }
+body { background-color: var(--bg-main); color: var(--text-main); font-family: var(--font-family); font-size: 14px; padding-bottom: 75px; }
+
+header { background-color: var(--bg-card); border-bottom: 1px solid var(--border-color); padding: 12px 16px; position: sticky; top: 0; z-index: 100; display: flex; justify-content: space-between; align-items: center; }
+.brand { font-weight: 700; font-size: 1.1rem; color: #fff; }
+.brand span { color: var(--accent-color); }
+.user-badge { font-size: 0.8rem; background: var(--bg-input); padding: 4px 10px; border-radius: 12px; border: 1px solid var(--border-color); }
+
+main { padding: 16px; max-width: 600px; margin: 0 auto; }
+.view { display: none; }
+.view.active { display: block; }
+
+.card { background-color: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 16px; margin-bottom: 16px; }
+.card-title { font-size: 1rem; font-weight: 600; margin-bottom: 12px; color: #fff; }
+.form-group { margin-bottom: 12px; }
+label { display: block; font-size: 0.75rem; color: var(--text-muted); margin-bottom: 4px; text-transform: uppercase; }
+
+input, select, button { width: 100%; padding: 10px 12px; border-radius: var(--radius); border: 1px solid var(--border-color); background-color: var(--bg-input); color: var(--text-main); font-family: inherit; font-size: 0.9rem; outline: none; }
+input:focus, select:focus { border-color: var(--accent-color); }
+button { background-color: var(--accent-color); color: #fff; font-weight: 600; border: none; cursor: pointer; }
+button.secondary { background-color: var(--bg-input); color: var(--text-main); border: 1px solid var(--border-color); }
+button.danger { background-color: var(--danger-color); }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.chip-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.chip { padding: 6px 12px; border-radius: 20px; border: 1px solid var(--border-color); background: var(--bg-input); font-size: 0.78rem; cursor: pointer; color: var(--text-muted); }
+.chip.selected { border-color: var(--accent-color); background: rgba(46,160,67,0.15); color: #fff; font-weight: 600; }
+
+.match-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 14px; margin-bottom: 12px; display: flex; flex-direction: column; gap: 10px; }
+.match-header { display: flex; justify-content: space-between; font-size: 0.75rem; color: var(--text-muted); border-bottom: 1px solid var(--border-color); padding-bottom: 6px; }
+.match-body { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; text-align: center; }
+.team-info { display: flex; flex-direction: column; align-items: center; gap: 4px; }
+.team-flag { font-size: 1.6rem; }
+.team-name { font-weight: 600; font-size: 0.8rem; }
+
+.winner-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 6px; }
+.winner-btn { padding: 8px 4px; border: 1px solid var(--border-color); background: var(--bg-input); border-radius: var(--radius); color: var(--text-muted); font-size: 0.75rem; cursor: pointer; text-align: center; font-family: inherit; width: 100%; }
+.winner-btn.selected { border-color: var(--accent-color); background: rgba(46,160,67,0.15); color: #fff; font-weight: 600; }
+.winner-label { font-size: 0.7rem; color: var(--text-muted); text-transform: uppercase; margin-bottom: 4px; display: block; }
+
+.score-inputs { display: flex; align-items: center; gap: 6px; justify-content: center; }
+.score-inputs input { width: 50px; height: 42px; text-align: center; font-size: 1.1rem; font-weight: 700; padding: 0; }
+
+.ranking-table { width: 100%; border-collapse: collapse; }
+.ranking-table th, .ranking-table td { padding: 10px; text-align: left; border-bottom: 1px solid var(--border-color); }
+.ranking-table td:last-child { text-align: right; color: var(--gold-color); font-weight: 700; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 0.7rem; font-weight: 600; }
+.badge-open { background: rgba(46,160,67,0.2); color: var(--accent-color); }
+.badge-closed { background: rgba(218,54,51,0.2); color: var(--danger-color); }
+.badge-pts5 { background: rgba(241,224,90,0.2); color: var(--gold-color); }
+.badge-pts3 { background: rgba(46,160,67,0.2); color: var(--accent-color); }
+.badge-pts0 { background: rgba(139,148,158,0.2); color: var(--text-muted); }
+
+.bottom-nav { position: fixed; bottom: 0; left: 0; right: 0; height: 60px; background-color: var(--bg-card); border-top: 1px solid var(--border-color); display: flex; justify-content: space-around; align-items: center; z-index: 1000; overflow-x: auto; }
+.nav-item { display: flex; flex-direction: column; align-items: center; color: var(--text-muted); font-size: 0.68rem; gap: 2px; background: none; border: none; width: auto; padding: 0 4px; cursor: pointer; flex-shrink: 0; }
+.nav-item.active { color: var(--accent-color); }
+.nav-icon { font-size: 1.15rem; }
+
+.toast { position: fixed; bottom: 80px; left: 50%; transform: translateX(-50%) translateY(20px); background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 10px 20px; font-size: 0.85rem; z-index: 9999; opacity: 0; transition: all 0.25s; pointer-events: none; white-space: nowrap; max-width: 90vw; overflow: hidden; text-overflow: ellipsis; }
+.toast.show { opacity: 1; transform: translateX(-50%) translateY(0); }
+.toast.ok { border-color: var(--accent-color); color: var(--accent-color); }
+.toast.err { border-color: var(--danger-color); color: var(--danger-color); }
+
+.pin-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.8); z-index: 500; align-items: center; justify-content: center; padding: 16px; }
+.pin-overlay.show { display: flex; }
+.pin-box { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius); padding: 24px; width: 100%; max-width: 320px; }
+.pin-box h2 { font-size: 1rem; margin-bottom: 16px; color: #fff; }
+
+.empty-state { text-align: center; padding: 40px 20px; color: var(--text-muted); }
+.empty-state .big { font-size: 2rem; margin-bottom: 8px; }
+.pred-result-row { display: flex; justify-content: space-between; align-items: center; margin-top: 6px; font-size: 0.8rem; }
+hr.sep { border: none; border-top: 1px solid var(--border-color); margin: 16px 0; }
+.info-box { background: rgba(241,224,90,0.08); border: 1px solid rgba(241,224,90,0.25); border-radius: var(--radius); padding: 10px; margin-bottom: 14px; font-size: 0.78rem; line-height: 1.45; color: var(--text-muted); }
+.info-box strong { color: var(--gold-color); }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="brand">Quiniela <span>LuAn™</span></div>
+  <div class="user-badge" id="user-display">Invitado</div>
+</header>
+
+<main>
+  <!-- LOGIN -->
+  <section id="view-auth" class="view active">
+    <div class="card">
+      <div class="card-title">Acceso a la Plataforma</div>
+      <div class="form-group"><label>Nombre de usuario</label><input type="text" id="auth-username" placeholder="Ejemplo: Luis25"></div>
+      <div class="form-group"><label>Contraseña</label><input type="password" id="auth-password" placeholder="••••••••"></div>
+      <div style="display:flex; gap:8px; margin-top:16px;">
+        <button id="btn-login">Iniciar sesión</button>
+        <button class="secondary" id="btn-register">Registrarse</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUINIELA (apostar) -->
+  <section id="view-predictions" class="view">
+    <div class="card">
+      <div class="form-group">
+        <label>Quiniela</label>
+        <select id="user-select-quiniela" onchange="app.onQuinielaChange('user')"></select>
+      </div>
+      <div class="form-group">
+        <label>Liga</label>
+        <select id="user-select-liga" onchange="app.fillRoundSelect('user-select-round','user-select-liga'); app.loadMatchesForUser()"></select>
+      </div>
+      <div class="form-group">
+        <label>Jornada</label>
+        <select id="user-select-round" onchange="app.loadMatchesForUser()"></select>
+      </div>
+    </div>
+    <div id="user-matches-list"></div>
+  </section>
+
+  <!-- MIS PRONÓSTICOS -->
+  <section id="view-mispred" class="view">
+    <div class="card">
+      <div class="card-title">Mis pronósticos</div>
+      <div class="form-group">
+        <label>Quiniela</label>
+        <select id="mis-select-quiniela" onchange="app.loadMyPredictions()"></select>
+      </div>
+    </div>
+    <div id="mis-total-card"></div>
+    <div id="mis-pred-list"></div>
+  </section>
+
+  <!-- RANKING -->
+  <section id="view-ranking" class="view">
+    <div class="card">
+      <div class="card-title">Clasificación</div>
+      <div class="form-group">
+        <label>Quiniela</label>
+        <select id="ranking-select-quiniela" onchange="app.loadRanking()"></select>
+      </div>
+      <table class="ranking-table">
+        <thead><tr><th>#</th><th>Jugador</th><th style="text-align:right">Puntos</th></tr></thead>
+        <tbody id="ranking-body"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- TODOS -->
+  <section id="view-todos" class="view">
+    <div class="card">
+      <div class="card-title">👁️ Apuestas de todos</div>
+      <div class="form-group">
+        <label>Quiniela</label>
+        <select id="todos-select-quiniela" onchange="app.onQuinielaChange('todos')"></select>
+      </div>
+      <div class="form-group">
+        <label>Liga</label>
+        <select id="todos-select-liga" onchange="app.fillRoundSelect('todos-select-round','todos-select-liga'); app.loadTodos()"></select>
+      </div>
+      <div class="form-group">
+        <label>Jornada</label>
+        <select id="todos-select-round" onchange="app.loadTodos()"></select>
+      </div>
+      <p style="font-size:0.75rem;color:var(--text-muted);margin-top:4px">Solo se muestran apuestas de partidos ya cerrados o finalizados.</p>
+    </div>
+    <div id="todos-list"></div>
+  </section>
+
+  <!-- ADMIN -->
+  <section id="view-admin" class="view">
+
+    <div class="card">
+      <div class="card-title">🏆 Crear quiniela (combo de ligas)</div>
+      <div class="form-group"><label>Nombre de la quiniela</label><input type="text" id="new-quiniela-name" placeholder="Ej: Triple Corona"></div>
+      <div class="form-group">
+        <label>Ligas incluidas</label>
+        <div class="chip-row" id="quiniela-ligas-chips"></div>
+      </div>
+      <button onclick="app.createQuiniela()">Crear quiniela</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Registrar partido</div>
+      <div class="form-group">
+        <label>Quiniela</label>
+        <select id="match-quiniela" onchange="app.onQuinielaChange('match')"></select>
+      </div>
+      <div class="form-group">
+        <label>Liga</label>
+        <select id="match-liga" onchange="app.updateAdminTeams(); app.fillRoundSelect('match-round','match-liga'); app.loadAdminMatches()"></select>
+      </div>
+      <div class="form-group"><label>Jornada</label><select id="match-round"></select></div>
+      <div class="form-group"><label>Equipo local (sede)</label><select id="match-home"></select></div>
+      <div class="form-group"><label>Equipo visitante</label><select id="match-away"></select></div>
+      <div class="form-group"><label>Fecha y hora del partido</label><input type="datetime-local" id="match-date"></div>
+      <button onclick="app.publishMatch()">Publicar partido</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">Ingresar resultado oficial</div>
+      <div class="form-group"><label>Partido</label><select id="admin-match-select"></select></div>
+      <div class="score-inputs" style="margin-bottom:12px;">
+        <input type="number" id="admin-goles-local" min="0" max="20" placeholder="0">
+        <span style="color:var(--text-muted);font-size:1.2rem;">–</span>
+        <input type="number" id="admin-goles-visita" min="0" max="20" placeholder="0">
+      </div>
+      <button class="secondary" onclick="app.loadAdminMatches()" style="margin-bottom:8px;">Cargar partidos</button>
+      <button onclick="app.saveOfficialResult()">Guardar resultado y calcular puntos</button>
+    </div>
+
+    <div class="card">
+      <div class="card-title">🕒 Carga tardía de pronóstico</div>
+      <div class="info-box"><strong>Solo administrador.</strong><br>Registra una apuesta que el jugador no pudo introducir antes del cierre.</div>
+      <div class="form-group"><label>Partido</label><select id="manual-match-select"></select></div>
+      <div class="form-group"><label>Nombre del jugador</label><input type="text" id="manual-username" placeholder="Ej: Luis25" autocomplete="off"></div>
+      <div class="form-group"><label>¿Quién gana? (obligatorio)</label><select id="manual-ganador"><option value="">— Selecciona —</option></select></div>
+      <div class="form-group">
+        <label>Marcador exacto (opcional — +5 pts)</label>
+        <div class="score-inputs">
+          <input type="number" id="manual-goles-local" min="0" max="20" placeholder="0">
+          <span style="color:var(--text-muted);font-size:1.2rem;">–</span>
+          <input type="number" id="manual-goles-visita" min="0" max="20" placeholder="0">
+        </div>
+      </div>
+      <button onclick="app.saveManualPrediction()">🕒 Guardar carga tardía</button>
+    </div>
+
+  </section>
+</main>
+
+<nav class="bottom-nav">
+  <button class="nav-item" id="nav-predictions" onclick="app.navigate('view-predictions')"><span class="nav-icon">⚽</span><span>Quiniela</span></button>
+  <button class="nav-item" id="nav-mispred" onclick="app.navigate('view-mispred')"><span class="nav-icon">🎯</span><span>Mis apuestas</span></button>
+  <button class="nav-item" id="nav-ranking" onclick="app.navigate('view-ranking')"><span class="nav-icon">🏆</span><span>Ranking</span></button>
+  <button class="nav-item" id="nav-todos" onclick="app.navigate('view-todos')"><span class="nav-icon">👁️</span><span>Todos</span></button>
+  <button class="nav-item" id="nav-admin" onclick="app.openAdmin()"><span class="nav-icon">⚙️</span><span>Admin</span></button>
+  <button class="nav-item" onclick="app.logout()"><span class="nav-icon">🚪</span><span>Salir</span></button>
+</nav>
+
+<div class="pin-overlay" id="pin-overlay">
+  <div class="pin-box">
+    <h2>🔒 Panel de administrador</h2>
+    <div class="form-group"><label>PIN de acceso</label><input type="password" id="pin-input" placeholder="••••" maxlength="8"></div>
+    <div style="display:flex; gap:8px; margin-top:12px;">
+      <button onclick="app.checkPin()">Entrar</button>
+      <button class="secondary" onclick="app.closePin()">Cancelar</button>
+    </div>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
