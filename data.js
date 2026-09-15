@@ -6,7 +6,7 @@ const LEAGUES = {
   champions: {
     name: "Champions League",
     flag: "⭐",
-    roundType: "cup", // jornadas fijas + eliminatorias
+    roundType: "cup", // jornadas de copa
     teams: {
       aek: { name: "AEK Athens", flag: "🇬🇷" },
       arsenal: { name: "Arsenal", flag: "🏴󠁧󠁢󠁥󠁮󠁧󠁿" },
@@ -233,29 +233,32 @@ const LEAGUES = {
   }
 };
 
-/* Jornadas fijas de Champions/Europa (formato copa) */
+/* Jornadas limpias para copas (Champions / Europa League) sin fechas estáticas */
 const CUP_ROUNDS = [
-  ['1', 'Jornada 1 — 8-10 sep 2026'],
-  ['2', 'Jornada 2 — 13/14 oct 2026'],
-  ['3', 'Jornada 3 — 20/21 oct 2026'],
-  ['4', 'Jornada 4 — 3/4 nov 2026'],
-  ['5', 'Jornada 5 — 24/25 nov 2026'],
-  ['6', 'Jornada 6 — 8/9 dic 2026'],
-  ['7', 'Jornada 7 — 19/20 ene 2027'],
-  ['8', 'Jornada 8 — 27 ene 2027'],
+  ['1', 'Jornada 1'],
+  ['2', 'Jornada 2'],
+  ['3', 'Jornada 3'],
+  ['4', 'Jornada 4'],
+  ['5', 'Jornada 5'],
+  ['6', 'Jornada 6'],
+  ['7', 'Jornada 7'],
+  ['8', 'Jornada 8'],
   ['16avos', '16avos de final'],
   ['8avos', 'Octavos de final'],
   ['4avos', 'Cuartos de final'],
   ['SF', 'Semifinales'],
-  ['Final', 'Final — 5 jun 2027']
+  ['Final', 'Final']
 ];
 
 function getRoundsForLeague(ligaKey) {
   const liga = LEAGUES[ligaKey];
   if (!liga) return [];
   if (liga.roundType === 'cup') return CUP_ROUNDS;
+  
   const rounds = [];
-  for (let i = 1; i <= liga.totalRounds; i++) rounds.push([String(i), `Jornada ${i}`]);
+  for (let i = 1; i <= liga.totalRounds; i++) {
+    rounds.push([String(i), `Jornada ${i}`]);
+  }
   return rounds;
 }
 
