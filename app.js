@@ -844,3 +844,5 @@ auth.onAuthStateChanged(async user => {
     document.getElementById('user-display').textContent = 'Invitado';
   }
 });
+
+
