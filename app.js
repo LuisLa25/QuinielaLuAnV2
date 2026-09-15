@@ -76,6 +76,12 @@ class QuinielaEngine {
     document.getElementById('btn-register').addEventListener('click', () => this.register());
     document.getElementById('auth-password').addEventListener('keydown', e => { if (e.key === 'Enter') this.login(); });
     document.getElementById('pin-input').addEventListener('keydown', e => { if (e.key === 'Enter') this.checkPin(); });
+
+    // Escuchar cambio de jornada en Admin para re-filtrar equipos ocupados
+    const roundAdminSel = document.getElementById('match-round');
+    if (roundAdminSel) {
+      roundAdminSel.addEventListener('change', () => this.updateAdminTeams());
+    }
   }
 
   _toEmail(username) {
@@ -229,8 +235,8 @@ class QuinielaEngine {
 
     // Repoblar dependientes
     if (prefix === 'match') {
-      this.updateAdminTeams();
       this.fillRoundSelect('match-round', 'match-liga');
+      this.updateAdminTeams();
       this.loadAdminMatches();
     } else if (prefix === 'user') {
       this.fillRoundSelect('user-select-round', 'user-select-liga');
@@ -252,17 +258,72 @@ class QuinielaEngine {
     if ([...sel.options].some(o => o.value === current)) sel.value = current;
   }
 
-  /* ═══ EQUIPOS EN ADMIN ═══ */
-  updateAdminTeams() {
+  /* ═══ EQUIPOS EN ADMIN (CON OPACADO / DESHABILITADO SI YA ESTÁN ASIGNADOS EN LA JORNADA) ═══ */
+  async updateAdminTeams() {
+    const quinielaId = document.getElementById('match-quiniela')?.value;
     const liga = document.getElementById('match-liga')?.value;
+    const round = document.getElementById('match-round')?.value;
+
+    const homeSel = document.getElementById('match-home');
+    const awaySel = document.getElementById('match-away');
+    if (!homeSel || !awaySel) return;
+
+    const currentHome = homeSel.value;
+    const currentAway = awaySel.value;
+
+    homeSel.innerHTML = '<option value="">— Selecciona equipo —</option>';
+    awaySel.innerHTML = '<option value="">— Selecciona equipo —</option>';
+
+    if (!liga) return;
+
     const teams = LEAGUES[liga]?.teams || {};
-    ['match-home', 'match-away'].forEach(id => {
-      const sel = document.getElementById(id);
-      sel.innerHTML = '<option value="">— Selecciona equipo —</option>';
-      Object.entries(teams).sort((a, b) => a[1].name.localeCompare(b[1].name)).forEach(([k, t]) => {
-        sel.add(new Option(`${t.flag} ${t.name}`, k));
-      });
+    const usedTeams = new Set();
+
+    // Consultar en Firebase partidos registrados en esta jornada para saber qué equipos están asignados
+    if (quinielaId && liga && round) {
+      try {
+        const snap = await db.collection('matches')
+          .where('quinielaId', '==', quinielaId)
+          .where('liga', '==', liga)
+          .where('round', '==', round)
+          .get();
+
+        snap.forEach(doc => {
+          const m = doc.data();
+          if (m.homeTeamId) usedTeams.add(m.homeTeamId);
+          if (m.awayTeamId) usedTeams.add(m.awayTeamId);
+        });
+      } catch (e) {
+        console.error("Error al obtener equipos usados:", e);
+      }
+    }
+
+    // Poblar listas de selección
+    Object.entries(teams).sort((a, b) => a[1].name.localeCompare(b[1].name)).forEach(([k, t]) => {
+      const isUsed = usedTeams.has(k);
+      const text = isUsed ? `${t.flag} ${t.name} [Ya asignado]` : `${t.flag} ${t.name}`;
+
+      // Opción para Local
+      const optHome = new Option(text, k);
+      if (isUsed) {
+        optHome.disabled = true;
+        optHome.style.color = '#8b949e';
+        optHome.style.opacity = '0.4';
+      }
+      homeSel.add(optHome);
+
+      // Opción para Visitante
+      const optAway = new Option(text, k);
+      if (isUsed) {
+        optAway.disabled = true;
+        optAway.style.color = '#8b949e';
+        optAway.style.opacity = '0.4';
+      }
+      awaySel.add(optAway);
     });
+
+    if ([...homeSel.options].some(o => o.value === currentHome && !o.disabled)) homeSel.value = currentHome;
+    if ([...awaySel.options].some(o => o.value === currentAway && !o.disabled)) awaySel.value = currentAway;
   }
 
   /* ═══════════════════════════════════════════
@@ -611,6 +672,7 @@ class QuinielaEngine {
         status: 'OPEN', golesLocal: null, golesVisita: null, ganador: null
       });
       this.toast('✓ Partido publicado', 'ok');
+      await this.updateAdminTeams(); // Refrescar los equipos opacados al instante
       this.loadAdminMatches();
     } catch (e) {
       this.toast('Error al publicar', 'err');
