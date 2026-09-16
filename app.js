@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════
-   QUINIELA LUAN v2 — MOTOR PRINCIPAL (COMPLETO Y CORREGIDO)
+   QUINIELA LUAN v2 — MOTOR PRINCIPAL (COMPLETO Y MEJORADO)
    ═══════════════════════════════════════════ */
 
 /* ── FIREBASE CONFIG ── */
@@ -84,6 +84,7 @@ class QuinielaEngine {
   /* ═══ TOAST ═══ */
   toast(msg, tipo = 'ok') {
     const t = document.getElementById('toast');
+    if (!t) return;
     t.textContent = msg;
     t.className = 'toast show ' + tipo;
     clearTimeout(this._toastTimer);
@@ -136,14 +137,14 @@ class QuinielaEngine {
 
   /* ═══ AUTH ═══ */
   _initListeners() {
-    document.getElementById('btn-login').addEventListener('click', () => this.login());
-    document.getElementById('btn-register').addEventListener('click', () => this.register());
+    document.getElementById('btn-login')?.addEventListener('click', () => this.login());
+    document.getElementById('btn-register')?.addEventListener('click', () => this.register());
 
-    document.getElementById('auth-password').addEventListener('keydown', e => {
+    document.getElementById('auth-password')?.addEventListener('keydown', e => {
       if (e.key === 'Enter') this.login();
     });
 
-    document.getElementById('pin-input').addEventListener('keydown', e => {
+    document.getElementById('pin-input')?.addEventListener('keydown', e => {
       if (e.key === 'Enter') this.checkPin();
     });
 
@@ -275,6 +276,7 @@ class QuinielaEngine {
   /* ═══ QUINIELAS ═══ */
   renderLigaChips() {
     const box = document.getElementById('quiniela-ligas-chips');
+    if (!box) return;
     box.innerHTML = '';
 
     Object.entries(LEAGUES).forEach(([key, liga]) => {
@@ -351,6 +353,7 @@ class QuinielaEngine {
     await this.loadQuinielas();
 
     const sel = document.getElementById(selectId);
+    if (!sel) return;
     const current = sel.value;
 
     sel.innerHTML = '';
@@ -450,6 +453,7 @@ class QuinielaEngine {
   fillRoundSelect(selectId, ligaSelectId) {
     const liga = document.getElementById(ligaSelectId)?.value;
     const sel = document.getElementById(selectId);
+    if (!sel) return;
 
     const current = sel.value;
 
@@ -575,30 +579,170 @@ class QuinielaEngine {
   }
 
   /* ═══════════════════════════════════════════
+     SISTEMA DE ANOTACIÓN INTELIGENTE CON SWIPE
+  ═══════════════════════════════════════════ */
+
+  _renderSwipePicker(matchId, role, min, max, currentVal) {
+    let optionsHTML = '';
+    for (let i = min; i <= max; i++) {
+      optionsHTML += `<span class="score-opt ${i === currentVal ? 'selected' : ''}">${i}</span>`;
+    }
+
+    const offset = -((currentVal - min) * 60);
+
+    return `
+      <div class="swipe-picker" id="picker-${matchId}-${role}" data-match="${matchId}" data-role="${role}" data-val="${currentVal}" data-min="${min}" data-max="${max}">
+        <div class="swipe-track" style="transform: translateX(${offset}px);">
+          ${optionsHTML}
+        </div>
+      </div>
+    `;
+  }
+
+  _initSwipeEvents(matchId) {
+    const pickers = document.querySelectorAll(`[id^="picker-${matchId}"]`);
+
+    pickers.forEach(picker => {
+      let startX = 0;
+      let isDragging = false;
+
+      const onStart = (e) => {
+        isDragging = true;
+        startX = e.touches ? e.touches[0].clientX : e.clientX;
+      };
+
+      const onMove = (e) => {
+        if (!isDragging) return;
+        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
+        const diffX = currentX - startX;
+
+        let val = parseInt(picker.dataset.val);
+        const min = parseInt(picker.dataset.min);
+        const max = parseInt(picker.dataset.max);
+
+        if (diffX < -20 && val < max) {
+          val++;
+          isDragging = false;
+          this._updatePredictionState(matchId, picker.dataset.role, val);
+        } else if (diffX > 20 && val > min) {
+          val--;
+          isDragging = false;
+          this._updatePredictionState(matchId, picker.dataset.role, val);
+        }
+      };
+
+      const onEnd = () => { isDragging = false; };
+
+      picker.addEventListener('touchstart', onStart, { passive: true });
+      picker.addEventListener('touchmove', onMove, { passive: true });
+      picker.addEventListener('touchend', onEnd);
+
+      picker.addEventListener('mousedown', onStart);
+      picker.addEventListener('mousemove', onMove);
+      picker.addEventListener('mouseup', onEnd);
+    });
+  }
+
+  _updatePredictionState(matchId, changedRole, newValue) {
+    const card = document.getElementById(`card-${matchId}`);
+    if (!card) return;
+
+    let winner = card.dataset.winner || 'Home';
+    let homeGoals = parseInt(card.dataset.homeGoals || 1);
+    let awayGoals = parseInt(card.dataset.awayGoals || 0);
+
+    if (changedRole === 'winner') {
+      winner = newValue;
+      card.dataset.winner = winner;
+      if (winner === 'Home') { homeGoals = Math.max(1, homeGoals); awayGoals = 0; }
+      if (winner === 'Away') { awayGoals = Math.max(1, awayGoals); homeGoals = 0; }
+      if (winner === 'Draw') { homeGoals = 1; awayGoals = 1; }
+    } else if (changedRole === 'homeG') {
+      homeGoals = newValue;
+    } else if (changedRole === 'awayG') {
+      awayGoals = newValue;
+    }
+
+    // Pasos 3 y 4: Filtrado inteligente y regla 1-0
+    if (winner === 'Home') {
+      if (homeGoals === 1) awayGoals = 0;
+      else if (awayGoals >= homeGoals) awayGoals = homeGoals - 1;
+    } else if (winner === 'Away') {
+      if (awayGoals === 1) homeGoals = 0;
+      else if (homeGoals >= awayGoals) homeGoals = awayGoals - 1;
+    } else if (winner === 'Draw') {
+      awayGoals = homeGoals;
+    }
+
+    card.dataset.homeGoals = homeGoals;
+    card.dataset.awayGoals = awayGoals;
+
+    this._renderMatchControls(matchId);
+  }
+
+  _renderMatchControls(matchId) {
+    const card = document.getElementById(`card-${matchId}`);
+    if (!card) return;
+
+    const winner = card.dataset.winner;
+    const hG = parseInt(card.dataset.homeGoals);
+    const aG = parseInt(card.dataset.awayGoals);
+
+    const container = document.getElementById(`controls-${matchId}`);
+    if (!container) return;
+
+    let homeMin = 0, homeMax = 7, awayMin = 0, awayMax = 7;
+
+    if (winner === 'Home') {
+      homeMin = 1; homeMax = 7;
+      awayMin = 0; awayMax = Math.max(0, hG - 1);
+    } else if (winner === 'Away') {
+      awayMin = 1; awayMax = 7;
+      homeMin = 0; homeMax = Math.max(0, aG - 1);
+    } else {
+      homeMin = 0; homeMax = 7;
+      awayMin = homeMin; awayMax = homeMax;
+    }
+
+    container.innerHTML = `
+      <div class="winner-row">
+        <button class="winner-btn ${winner === 'Home' ? 'selected' : ''}" onclick="app._updatePredictionState('${matchId}', 'winner', 'Home')">Local</button>
+        <button class="winner-btn ${winner === 'Draw' ? 'selected' : ''}" onclick="app._updatePredictionState('${matchId}', 'winner', 'Draw')">Empate</button>
+        <button class="winner-btn ${winner === 'Away' ? 'selected' : ''}" onclick="app._updatePredictionState('${matchId}', 'winner', 'Away')">Visitante</button>
+      </div>
+
+      <div class="swipe-container-row">
+        <div class="picker-box">
+          <label>Goles Local</label>
+          ${this._renderSwipePicker(matchId, 'homeG', homeMin, homeMax, hG)}
+        </div>
+        <div class="picker-box">
+          <label>Goles Visita</label>
+          ${this._renderSwipePicker(matchId, 'awayG', awayMin, awayMax, aG)}
+        </div>
+      </div>
+    `;
+
+    this._initSwipeEvents(matchId);
+  }
+
+  /* ═══════════════════════════════════════════
      QUINIELA — CARGAR PARTIDOS PARA APOSTAR
   ═══════════════════════════════════════════ */
   async loadMatchesForUser() {
     if (!this.currentUser) return;
 
-    const quinielaId =
-      document.getElementById('user-select-quiniela').value;
-
-    const liga =
-      document.getElementById('user-select-liga').value;
-
-    const round =
-      document.getElementById('user-select-round').value;
-
-    const container =
-      document.getElementById('user-matches-list');
+    const quinielaId = document.getElementById('user-select-quiniela').value;
+    const liga = document.getElementById('user-select-liga').value;
+    const round = document.getElementById('user-select-round').value;
+    const container = document.getElementById('user-matches-list');
 
     if (!quinielaId || !liga || !round) {
       container.innerHTML = '';
       return;
     }
 
-    container.innerHTML =
-      '<p style="text-align:center;color:var(--text-muted);padding:20px">Cargando...</p>';
+    container.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px">Cargando partidos...</p>';
 
     try {
       const snap = await db.collection('matches')
@@ -608,8 +752,7 @@ class QuinielaEngine {
         .get();
 
       if (snap.empty) {
-        container.innerHTML =
-          '<div class="empty-state"><div class="big">📋</div>Sin partidos en esta jornada.</div>';
+        container.innerHTML = '<div class="empty-state"><div class="big">📋</div>Sin partidos en esta jornada.</div>';
         return;
       }
 
@@ -618,86 +761,54 @@ class QuinielaEngine {
         .get();
 
       const myPreds = {};
-
-      predSnap.forEach(d => {
-        myPreds[d.data().matchId] = d.data();
-      });
+      predSnap.forEach(d => { myPreds[d.data().matchId] = d.data(); });
 
       container.innerHTML = '';
-
       const now = new Date();
-
       const matches = [];
 
       snap.forEach(docSnap => {
-        matches.push({
-          id: docSnap.id,
-          ...docSnap.data()
-        });
+        matches.push({ id: docSnap.id, ...docSnap.data() });
       });
 
       this._sortMatchesChronologically(matches);
 
       matches.forEach(m => {
-        const home = getTeam(
-          m.liga,
-          m.homeTeamId
-        );
+        const home = getTeam(m.liga, m.homeTeamId);
+        const away = getTeam(m.liga, m.awayTeamId);
+        const matchTime = this._getMatchTime(m.matchDate);
 
-        const away = getTeam(
-          m.liga,
-          m.awayTeamId
-        );
-
-        const matchTime = this._getMatchTime(
-          m.matchDate
-        );
-
-        const locked =
-          (
-            matchTime !== Number.MAX_SAFE_INTEGER &&
-            now.getTime() >= matchTime
-          ) ||
-          m.status === 'FINISHED';
-
+        const locked = (matchTime !== Number.MAX_SAFE_INTEGER && now.getTime() >= matchTime) || m.status === 'FINISHED';
         const pred = myPreds[m.id] || {};
+
+        const initialHomeGoles = pred.golesLocal ?? 1;
+        const initialAwayGoles = pred.golesVisita ?? 0;
+        let initialWinner = 'Home';
+
+        if (pred.golesLocal < pred.golesVisita) initialWinner = 'Away';
+        else if (pred.golesLocal === pred.golesVisita && pred.golesLocal !== null) initialWinner = 'Draw';
 
         const card = document.createElement('div');
         card.className = 'match-card';
+        card.id = `card-${m.id}`;
+        card.dataset.winner = initialWinner;
+        card.dataset.homeGoals = initialHomeGoles;
+        card.dataset.awayGoals = initialAwayGoles;
 
         let resultHtml = '';
 
-        if (
-          m.status === 'FINISHED' &&
-          m.golesLocal !== null &&
-          m.golesVisita !== undefined
-        ) {
+        if (m.status === 'FINISHED' && m.golesLocal !== null && m.golesVisita !== undefined) {
           resultHtml = `
-            <div style="text-align:center;font-size:0.8rem;color:var(--text-muted)">
-              Resultado oficial:
-              <strong style="color:#fff">
-                ${m.golesLocal} – ${m.golesVisita}
-              </strong>
-              · Ganó:
-              <strong style="color:var(--gold-color)">
-                ${m.ganador || '—'}
-              </strong>
+            <div style="text-align:center;font-size:0.8rem;color:var(--text-muted);margin-top:8px">
+              Resultado oficial: <strong style="color:#fff">${m.golesLocal} – ${m.golesVisita}</strong> · Ganó: <strong style="color:var(--gold-color)">${m.ganador || '—'}</strong>
             </div>
           `;
 
           if (pred.calculado) {
-            const cls =
-              pred.pts >= 5
-                ? 'badge-pts5'
-                : pred.pts >= 3
-                  ? 'badge-pts3'
-                  : 'badge-pts0';
-
+            const cls = pred.pts >= 5 ? 'badge-pts5' : pred.pts >= 3 ? 'badge-pts3' : 'badge-pts0';
             resultHtml += `
               <div style="text-align:center;margin-top:4px">
-                <span class="badge ${cls}">
-                  Tu pronóstico: ${pred.pts} pts
-                </span>
+                <span class="badge ${cls}">Tu pronóstico: ${pred.pts} pts</span>
               </div>
             `;
           }
@@ -705,15 +816,8 @@ class QuinielaEngine {
 
         card.innerHTML = `
           <div class="match-header">
-            <span>
-              ${this._formatMatchDate(m.matchDate)}
-            </span>
-
-            <span class="badge ${
-              locked
-                ? 'badge-closed'
-                : 'badge-open'
-            }">
+            <span>${this._formatMatchDate(m.matchDate)}</span>
+            <span class="badge ${locked ? 'badge-closed' : 'badge-open'}">
               ${locked ? 'Cerrado' : 'Abierto'}
             </span>
           </div>
@@ -723,11 +827,7 @@ class QuinielaEngine {
               <span class="team-flag">${home.flag}</span>
               <span class="team-name">${home.name}</span>
             </div>
-
-            <span style="color:var(--text-muted);font-size:1rem">
-              vs
-            </span>
-
+            <span style="color:var(--text-muted);font-size:1rem">VS</span>
             <div class="team-info">
               <span class="team-flag">${away.flag}</span>
               <span class="team-name">${away.name}</span>
@@ -735,114 +835,15 @@ class QuinielaEngine {
           </div>
 
           ${!locked ? `
-            <div>
-              <span class="winner-label">
-                ¿Quién gana? (obligatorio)
-              </span>
-
-              <div class="winner-row" id="wrow-${m.id}">
-                <button
-                  class="winner-btn ${
-                    pred.ganador === home.name
-                      ? 'selected'
-                      : ''
-                  }"
-                  onclick="app._selectWinner(
-                    '${m.id}',
-                    '${home.name}',
-                    this
-                  )"
-                >
-                  ${home.flag}<br>${home.name}
-                </button>
-
-                <button
-                  class="winner-btn ${
-                    pred.ganador === 'Empate'
-                      ? 'selected'
-                      : ''
-                  }"
-                  onclick="app._selectWinner(
-                    '${m.id}',
-                    'Empate',
-                    this
-                  )"
-                >
-                  🤝<br>Empate
-                </button>
-
-                <button
-                  class="winner-btn ${
-                    pred.ganador === away.name
-                      ? 'selected'
-                      : ''
-                  }"
-                  onclick="app._selectWinner(
-                    '${m.id}',
-                    '${away.name}',
-                    this
-                  )"
-                >
-                  ${away.flag}<br>${away.name}
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <span class="winner-label">
-                Marcador exacto (opcional — +5 pts)
-              </span>
-
-              <div class="score-inputs">
-                <input
-                  type="number"
-                  id="ph-${m.id}"
-                  min="0"
-                  max="20"
-                  value="${pred.golesLocal ?? ''}"
-                  placeholder="0"
-                >
-
-                <span style="color:var(--text-muted);font-size:1.2rem">
-                  –
-                </span>
-
-                <input
-                  type="number"
-                  id="pa-${m.id}"
-                  min="0"
-                  max="20"
-                  value="${pred.golesVisita ?? ''}"
-                  placeholder="0"
-                >
-              </div>
-            </div>
-
-            <button
-              onclick="app.savePrediction(
-                '${m.id}',
-                '${home.name}',
-                '${away.name}'
-              )"
-            >
-              Guardar pronóstico
+            <div id="controls-${m.id}"></div>
+            <button class="btn-primary" style="width:100%;margin-top:12px" onclick="app.savePrediction('${m.id}', '${home.name}', '${away.name}')">
+              Guardar Pronóstico
             </button>
-
           ` : `
-            <div style="font-size:0.8rem;color:var(--text-muted);text-align:center">
-              ${
-                pred.ganador
-                  ? `Tu apuesta:
-                    <strong style="color:#fff">
-                      ${pred.ganador}
-                    </strong>
-                    ${
-                      pred.golesLocal != null
-                        ? ` · ${pred.golesLocal}–${pred.golesVisita}`
-                        : ''
-                    }`
-                  : 'No apostaste en este partido'
-              }
+            <div style="font-size:0.8rem;color:var(--text-muted);text-align:center;margin-top:8px">
+              ${pred.golesLocal != null 
+                ? `Tu apuesta: <strong style="color:#fff">${pred.golesLocal} – ${pred.golesVisita}</strong> (${pred.ganador})`
+                : 'No apostaste en este partido'}
             </div>
           `}
 
@@ -850,63 +851,30 @@ class QuinielaEngine {
         `;
 
         container.appendChild(card);
+
+        if (!locked) {
+          this._renderMatchControls(m.id);
+        }
       });
 
     } catch (e) {
-      container.innerHTML =
-        '<div class="empty-state"><div class="big">⚠️</div>Error al cargar partidos.</div>';
-
+      container.innerHTML = '<div class="empty-state"><div class="big">⚠️</div>Error al cargar partidos.</div>';
       console.error(e);
     }
   }
 
-  _selectWinner(matchId, team, btn) {
-    const row =
-      document.getElementById('wrow-' + matchId);
+  async savePrediction(matchId, homeName, awayName) {
+    if (!this.currentUser) return this.toast('Inicia sesión primero', 'err');
 
-    row
-      .querySelectorAll('.winner-btn')
-      .forEach(b => b.classList.remove('selected'));
+    const card = document.getElementById(`card-${matchId}`);
+    if (!card) return;
 
-    btn.classList.add('selected');
-    btn.dataset.selected = team;
-  }
+    const golesLocal = parseInt(card.dataset.homeGoals);
+    const golesVisita = parseInt(card.dataset.awayGoals);
 
-  _getWinner(matchId) {
-    const row =
-      document.getElementById('wrow-' + matchId);
-
-    const sel =
-      row?.querySelector('.winner-btn.selected');
-
-    return sel
-      ? sel.dataset.selected
-      : null;
-  }
-
-  async savePrediction(
-    matchId,
-    homeName,
-    awayName
-  ) {
-    if (!this.currentUser) {
-      this.toast('Inicia sesión primero', 'err');
-      return;
-    }
-
-    const ganador =
-      this._getWinner(matchId);
-
-    if (!ganador) {
-      this.toast('Selecciona un ganador', 'err');
-      return;
-    }
-
-    const gL =
-      document.getElementById('ph-' + matchId).value;
-
-    const gA =
-      document.getElementById('pa-' + matchId).value;
+    let ganador = 'Empate';
+    if (golesLocal > golesVisita) ganador = homeName;
+    if (golesVisita > golesLocal) ganador = awayName;
 
     const data = {
       userId: this.currentUser.uid,
@@ -915,14 +883,11 @@ class QuinielaEngine {
       homeName,
       awayName,
       ganador,
-      golesLocal:
-        gL !== '' ? parseInt(gL) : null,
-      golesVisita:
-        gA !== '' ? parseInt(gA) : null,
+      golesLocal,
+      golesVisita,
       pts: 0,
       calculado: false,
-      updatedAt:
-        firebase.firestore.FieldValue.serverTimestamp()
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     };
 
     try {
@@ -941,16 +906,9 @@ class QuinielaEngine {
   async loadMyPredictions() {
     if (!this.currentUser) return;
 
-    const quinielaId =
-      document.getElementById(
-        'mis-select-quiniela'
-      ).value;
-
-    const list =
-      document.getElementById('mis-pred-list');
-
-    const totalCard =
-      document.getElementById('mis-total-card');
+    const quinielaId = document.getElementById('mis-select-quiniela').value;
+    const list = document.getElementById('mis-pred-list');
+    const totalCard = document.getElementById('mis-total-card');
 
     if (!quinielaId) {
       list.innerHTML = '';
@@ -958,8 +916,7 @@ class QuinielaEngine {
       return;
     }
 
-    list.innerHTML =
-      '<p style="text-align:center;color:var(--text-muted);padding:20px">Cargando...</p>';
+    list.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px">Cargando...</p>';
 
     try {
       const snap = await db.collection('predictions')
@@ -967,18 +924,10 @@ class QuinielaEngine {
         .get();
 
       let preds = [];
-
-      snap.forEach(d => {
-        preds.push({
-          id: d.id,
-          ...d.data()
-        });
-      });
+      snap.forEach(d => { preds.push({ id: d.id, ...d.data() }); });
 
       if (preds.length === 0) {
-        list.innerHTML =
-          '<div class="empty-state"><div class="big">🎯</div>Sin pronósticos aún.</div>';
-
+        list.innerHTML = '<div class="empty-state"><div class="big">🎯</div>Sin pronósticos aún.</div>';
         totalCard.innerHTML = '';
         return;
       }
@@ -988,39 +937,21 @@ class QuinielaEngine {
         .get();
 
       const matchMap = {};
+      mSnap.forEach(d => { matchMap[d.id] = { id: d.id, ...d.data() }; });
 
-      mSnap.forEach(d => {
-        matchMap[d.id] = {
-          id: d.id,
-          ...d.data()
-        };
-      });
-
-      preds = preds.filter(
-        p => matchMap[p.matchId]
-      );
+      preds = preds.filter(p => matchMap[p.matchId]);
 
       preds.sort((a, b) => {
         const matchA = matchMap[a.matchId];
         const matchB = matchMap[b.matchId];
-
-        const timeA = this._getMatchTime(
-          matchA?.matchDate
-        );
-
-        const timeB = this._getMatchTime(
-          matchB?.matchDate
-        );
-
+        const timeA = this._getMatchTime(matchA?.matchDate);
+        const timeB = this._getMatchTime(matchB?.matchDate);
         return timeA - timeB;
       });
 
       if (preds.length === 0) {
         totalCard.innerHTML = '';
-
-        list.innerHTML =
-          '<div class="empty-state"><div class="big">🎯</div>Sin pronósticos en esta quiniela.</div>';
-
+        list.innerHTML = '<div class="empty-state"><div class="big">🎯</div>Sin pronósticos en esta quiniela.</div>';
         return;
       }
 
@@ -1035,29 +966,15 @@ class QuinielaEngine {
       });
 
       totalCard.innerHTML = `
-        <div class="card"
-          style="display:flex;justify-content:space-between;align-items:center">
-
+        <div class="card" style="display:flex;justify-content:space-between;align-items:center">
           <div>
-            <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase">
-              Total acumulado
-            </div>
-
-            <div style="font-size:1.8rem;font-weight:700;color:var(--gold-color)">
-              ${total} pts
-            </div>
+            <div style="font-size:0.75rem;color:var(--text-muted);text-transform:uppercase">Total acumulado</div>
+            <div style="font-size:1.8rem;font-weight:700;color:var(--gold-color)">${total} pts</div>
           </div>
-
           <div style="text-align:right">
-            <div style="font-size:0.75rem;color:var(--text-muted)">
-              Calculados
-            </div>
-
-            <div style="font-size:1.2rem;font-weight:600">
-              ${calculados} / ${preds.length}
-            </div>
+            <div style="font-size:0.75rem;color:var(--text-muted)">Calculados</div>
+            <div style="font-size:1.2rem;font-weight:600">${calculados} / ${preds.length}</div>
           </div>
-
         </div>
       `;
 
@@ -1067,99 +984,52 @@ class QuinielaEngine {
         let ptsBadge;
 
         if (p.calculado) {
-          const cls =
-            p.pts >= 5
-              ? 'badge-pts5'
-              : p.pts >= 3
-                ? 'badge-pts3'
-                : 'badge-pts0';
-
-          const label =
-            p.pts >= 5
-              ? '5 pts — Exacto 🎯'
-              : p.pts >= 3
-                ? '3 pts — Ganador ✓'
-                : '0 pts — Falló ✗';
-
-          ptsBadge =
-            `<span class="badge ${cls}">${label}</span>`;
-
+          const cls = p.pts >= 5 ? 'badge-pts5' : p.pts >= 3 ? 'badge-pts3' : 'badge-pts0';
+          const label = p.pts >= 5 ? '5 pts — Exacto 🎯' : p.pts >= 3 ? '3 pts — Ganador ✓' : '0 pts — Falló ✗';
+          ptsBadge = `<span class="badge ${cls}">${label}</span>`;
         } else {
-          ptsBadge =
-            `<span class="badge" style="background:rgba(139,148,158,0.15);color:var(--text-muted)">Pendiente</span>`;
+          ptsBadge = `<span class="badge" style="background:rgba(139,148,158,0.15);color:var(--text-muted)">Pendiente</span>`;
         }
 
-        const card =
-          document.createElement('div');
-
+        const card = document.createElement('div');
         card.className = 'match-card';
 
         card.innerHTML = `
-          <div style="font-weight:600">
-            ${p.homeName} vs ${p.awayName}
-          </div>
-
+          <div style="font-weight:600">${p.homeName} vs ${p.awayName}</div>
           <div class="pred-result-row">
-
             <div style="color:var(--text-muted)">
-              Ganador:
-              <strong style="color:#fff">
-                ${p.ganador}
-              </strong>
-
-              ${
-                p.golesLocal != null
-                  ? ` · Marcador:
-                    <strong style="color:#fff">
-                      ${p.golesLocal}–${p.golesVisita}
-                    </strong>`
-                  : ''
-              }
+              Ganador: <strong style="color:#fff">${p.ganador}</strong>
+              ${p.golesLocal != null ? ` · Marcador: <strong style="color:#fff">${p.golesLocal}–${p.golesVisita}</strong>` : ''}
             </div>
-
             ${ptsBadge}
-
           </div>
-
-          ${
-            p.calculado && p.resultado
-              ? `<div style="font-size:0.75rem;color:var(--text-muted)">
-                  Resultado real:
-                  ${p.resultado.golesLocal}–${p.resultado.golesVisita}
-                  (${p.resultado.ganador})
-                </div>`
-              : ''
-          }
+          ${p.calculado && p.resultado ? `
+            <div style="font-size:0.75rem;color:var(--text-muted)">
+              Resultado real: ${p.resultado.golesLocal}–${p.resultado.golesVisita} (${p.resultado.ganador})
+            </div>
+          ` : ''}
         `;
 
         list.appendChild(card);
       });
 
     } catch (e) {
-      list.innerHTML =
-        '<div class="empty-state"><div class="big">⚠️</div>Error al cargar.</div>';
-
+      list.innerHTML = '<div class="empty-state"><div class="big">⚠️</div>Error al cargar.</div>';
       console.error(e);
     }
   }
 
   /* ═══ RANKING ═══ */
   async loadRanking() {
-    const quinielaId =
-      document.getElementById(
-        'ranking-select-quiniela'
-      ).value;
-
-    const tbody =
-      document.getElementById('ranking-body');
+    const quinielaId = document.getElementById('ranking-select-quiniela').value;
+    const tbody = document.getElementById('ranking-body');
 
     if (!quinielaId) {
       tbody.innerHTML = '';
       return;
     }
 
-    tbody.innerHTML =
-      '<tr><td colspan="3" style="color:var(--text-muted)">Cargando...</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted)">Cargando...</td></tr>';
 
     try {
       const mSnap = await db.collection('matches')
@@ -1167,43 +1037,29 @@ class QuinielaEngine {
         .get();
 
       const matchIds = new Set();
-
-      mSnap.forEach(d =>
-        matchIds.add(d.id)
-      );
+      mSnap.forEach(d => matchIds.add(d.id));
 
       if (matchIds.size === 0) {
-        tbody.innerHTML =
-          '<tr><td colspan="3" style="color:var(--text-muted)">Sin partidos en esta quiniela.</td></tr>';
-
+        tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted)">Sin partidos en esta quiniela.</td></tr>';
         return;
       }
 
-      const predSnap =
-        await db.collection('predictions')
-          .where('calculado', '==', true)
-          .get();
+      const predSnap = await db.collection('predictions')
+        .where('calculado', '==', true)
+        .get();
 
       const scores = {};
 
       predSnap.forEach(d => {
         const p = d.data();
-
         if (!matchIds.has(p.matchId)) return;
-
-        scores[p.username] =
-          (scores[p.username] || 0) +
-          (p.pts || 0);
+        scores[p.username] = (scores[p.username] || 0) + (p.pts || 0);
       });
 
-      const ranking =
-        Object.entries(scores)
-          .sort((a, b) => b[1] - a[1]);
+      const ranking = Object.entries(scores).sort((a, b) => b[1] - a[1]);
 
       if (ranking.length === 0) {
-        tbody.innerHTML =
-          '<tr><td colspan="3" style="color:var(--text-muted)">Sin resultados calculados aún.</td></tr>';
-
+        tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted)">Sin resultados calculados aún.</td></tr>';
         return;
       }
 
@@ -1211,29 +1067,14 @@ class QuinielaEngine {
 
       ranking.forEach(([username, pts], i) => {
         const pos = i + 1;
-
-        const medal =
-          pos === 1
-            ? '🥇'
-            : pos === 2
-              ? '🥈'
-              : pos === 3
-                ? '🥉'
-                : pos;
-
-        const tr =
-          document.createElement('tr');
-
-        tr.innerHTML =
-          `<td>${medal}</td><td>${username}</td><td>${pts}</td>`;
-
+        const medal = pos === 1 ? '🥇' : pos === 2 ? '🥈' : pos === 3 ? '🥉' : pos;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `<td>${medal}</td><td>${username}</td><td>${pts}</td>`;
         tbody.appendChild(tr);
       });
 
     } catch (e) {
-      tbody.innerHTML =
-        '<tr><td colspan="3" style="color:var(--text-muted)">Error al cargar.</td></tr>';
-
+      tbody.innerHTML = '<tr><td colspan="3" style="color:var(--text-muted)">Error al cargar.</td></tr>';
       console.error(e);
     }
   }
@@ -1242,31 +1083,17 @@ class QuinielaEngine {
   async loadTodos() {
     if (!this.currentUser) return;
 
-    const quinielaId =
-      document.getElementById(
-        'todos-select-quiniela'
-      ).value;
-
-    const liga =
-      document.getElementById(
-        'todos-select-liga'
-      ).value;
-
-    const round =
-      document.getElementById(
-        'todos-select-round'
-      ).value;
-
-    const lista =
-      document.getElementById('todos-list');
+    const quinielaId = document.getElementById('todos-select-quiniela').value;
+    const liga = document.getElementById('todos-select-liga').value;
+    const round = document.getElementById('todos-select-round').value;
+    const lista = document.getElementById('todos-list');
 
     if (!quinielaId || !liga || !round) {
       lista.innerHTML = '';
       return;
     }
 
-    lista.innerHTML =
-      '<p style="text-align:center;color:var(--text-muted);padding:20px">Cargando...</p>';
+    lista.innerHTML = '<p style="text-align:center;color:var(--text-muted);padding:20px">Cargando...</p>';
 
     try {
       const snap = await db.collection('matches')
@@ -1279,20 +1106,9 @@ class QuinielaEngine {
       const now = new Date();
 
       snap.forEach(d => {
-        const m = {
-          id: d.id,
-          ...d.data()
-        };
-
-        const matchTime =
-          this._getMatchTime(m.matchDate);
-
-        const cerrado =
-          (
-            matchTime !== Number.MAX_SAFE_INTEGER &&
-            now.getTime() >= matchTime
-          ) ||
-          m.status === 'FINISHED';
+        const m = { id: d.id, ...d.data() };
+        const matchTime = this._getMatchTime(m.matchDate);
+        const cerrado = (matchTime !== Number.MAX_SAFE_INTEGER && now.getTime() >= matchTime) || m.status === 'FINISHED';
 
         if (cerrado) {
           partidos.push(m);
@@ -1300,60 +1116,35 @@ class QuinielaEngine {
       });
 
       if (partidos.length === 0) {
-        lista.innerHTML =
-          '<div class="empty-state"><div class="big">🔒</div>Los partidos de esta jornada aún no han iniciado.<br><span style="font-size:0.8rem">Las apuestas se revelan cuando comienza cada partido.</span></div>';
-
+        lista.innerHTML = '<div class="empty-state"><div class="big">🔒</div>Los partidos de esta jornada aún no han iniciado.<br><span style="font-size:0.8rem">Las apuestas se revelan cuando comienza cada partido.</span></div>';
         return;
       }
 
       this._sortMatchesChronologically(partidos);
-
       lista.innerHTML = '';
 
       for (const m of partidos) {
-        const home =
-          getTeam(m.liga, m.homeTeamId);
+        const home = getTeam(m.liga, m.homeTeamId);
+        const away = getTeam(m.liga, m.awayTeamId);
 
-        const away =
-          getTeam(m.liga, m.awayTeamId);
-
-        const pSnap =
-          await db.collection('predictions')
-            .where('matchId', '==', m.id)
-            .get();
+        const pSnap = await db.collection('predictions')
+          .where('matchId', '==', m.id)
+          .get();
 
         const apuestas = [];
+        pSnap.forEach(d => apuestas.push(d.data()));
 
-        pSnap.forEach(d =>
-          apuestas.push(d.data())
-        );
+        apuestas.sort((a, b) => (a.username || '').localeCompare(b.username || ''));
 
-        apuestas.sort((a, b) =>
-          (a.username || '')
-            .localeCompare(b.username || '')
-        );
-
-        const card =
-          document.createElement('div');
-
+        const card = document.createElement('div');
         card.className = 'match-card';
 
         let resultHtml = '';
 
-        if (
-          m.status === 'FINISHED' &&
-          m.golesLocal != null
-        ) {
+        if (m.status === 'FINISHED' && m.golesLocal != null) {
           resultHtml = `
             <div style="text-align:center;font-size:0.8rem;padding:6px;background:rgba(241,224,90,0.08);border-radius:6px">
-              ⚽ Resultado:
-              <strong style="color:#fff">
-                ${m.golesLocal}–${m.golesVisita}
-              </strong>
-              · Ganó:
-              <strong style="color:var(--gold-color)">
-                ${m.ganador}
-              </strong>
+              ⚽ Resultado: <strong style="color:#fff">${m.golesLocal}–${m.golesVisita}</strong> · Ganó: <strong style="color:var(--gold-color)">${m.ganador}</strong>
             </div>
           `;
         }
@@ -1361,64 +1152,30 @@ class QuinielaEngine {
         let filas = '';
 
         if (apuestas.length === 0) {
-          filas =
-            '<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding:8px">Sin apuestas registradas</div>';
-
+          filas = '<div style="color:var(--text-muted);font-size:0.8rem;text-align:center;padding:8px">Sin apuestas registradas</div>';
         } else {
           apuestas.forEach(a => {
             let ptsBadge = '';
 
             if (a.calculado) {
-              const cls =
-                a.pts >= 5
-                  ? 'badge-pts5'
-                  : a.pts >= 3
-                    ? 'badge-pts3'
-                    : 'badge-pts0';
-
-              ptsBadge =
-                `<span class="badge ${cls}">${a.pts}pts</span>`;
+              const cls = a.pts >= 5 ? 'badge-pts5' : a.pts >= 3 ? 'badge-pts3' : 'badge-pts0';
+              ptsBadge = `<span class="badge ${cls}">${a.pts}pts</span>`;
             }
 
-            const marcador =
-              a.golesLocal != null
-                ? `${a.golesLocal}–${a.golesVisita}`
-                : '—';
-
-            const esYo =
-              a.userId === this.currentUser.uid
-                ? 'background:rgba(46,160,67,0.08);border-radius:6px;'
-                : '';
+            const marcador = a.golesLocal != null ? `${a.golesLocal}–${a.golesVisita}` : '—';
+            const esYo = a.userId === this.currentUser.uid ? 'background:rgba(46,160,67,0.08);border-radius:6px;' : '';
 
             filas += `
               <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 4px;border-bottom:1px solid var(--border-color);${esYo}">
-
                 <div>
-                  <strong style="font-size:0.85rem">
-                    ${a.username || '?'}
-                  </strong>
-
-                  ${
-                    a.userId === this.currentUser.uid
-                      ? '<span style="font-size:0.7rem;color:var(--accent-color);margin-left:4px">tú</span>'
-                      : ''
-                  }
+                  <strong style="font-size:0.85rem">${a.username || '?'}</strong>
+                  ${a.userId === this.currentUser.uid ? '<span style="font-size:0.7rem;color:var(--accent-color);margin-left:4px">tú</span>' : ''}
                 </div>
-
                 <div style="text-align:right;font-size:0.8rem">
-                  <div style="color:#fff;font-weight:600">
-                    ${a.ganador}
-                  </div>
-
-                  <div style="color:var(--text-muted)">
-                    ${marcador}
-                  </div>
+                  <div style="color:#fff;font-weight:600">${a.ganador}</div>
+                  <div style="color:var(--text-muted)">${marcador}</div>
                 </div>
-
-                <div style="min-width:48px;text-align:right">
-                  ${ptsBadge}
-                </div>
-
+                <div style="min-width:48px;text-align:right">${ptsBadge}</div>
               </div>
             `;
           });
@@ -1426,86 +1183,38 @@ class QuinielaEngine {
 
         card.innerHTML = `
           <div class="match-header">
-
-            <span>
-              ${home.flag} ${home.name}
-              vs
-              ${away.flag} ${away.name}
+            <span>${home.flag} ${home.name} vs ${away.flag} ${away.name}</span>
+            <span class="badge ${m.status === 'FINISHED' ? 'badge-pts5' : 'badge-closed'}">
+              ${m.status === 'FINISHED' ? 'Finalizado' : 'En curso'}
             </span>
-
-            <span class="badge ${
-              m.status === 'FINISHED'
-                ? 'badge-pts5'
-                : 'badge-closed'
-            }">
-              ${
-                m.status === 'FINISHED'
-                  ? 'Finalizado'
-                  : 'En curso'
-              }
-            </span>
-
           </div>
-
           ${resultHtml}
-
-          <div>
-            ${filas}
-          </div>
+          <div>${filas}</div>
         `;
 
         lista.appendChild(card);
       }
 
     } catch (e) {
-      lista.innerHTML =
-        '<div class="empty-state"><div class="big">⚠️</div>Error al cargar.</div>';
-
+      lista.innerHTML = '<div class="empty-state"><div class="big">⚠️</div>Error al cargar.</div>';
       console.error(e);
     }
   }
 
-  /* ═══ ADMIN — PUBLICAR PARTIDO (CORREGIDO CON TIMESTAMP) ═══ */
+  /* ═══ ADMIN — PUBLICAR PARTIDO ═══ */
   async publishMatch() {
-    const quinielaId =
-      document.getElementById('match-quiniela').value;
+    const quinielaId = document.getElementById('match-quiniela').value;
+    const liga = document.getElementById('match-liga').value;
+    const round = document.getElementById('match-round').value;
+    const homeTeamId = document.getElementById('match-home').value;
+    const awayTeamId = document.getElementById('match-away').value;
+    const matchDate = document.getElementById('match-date').value;
 
-    const liga =
-      document.getElementById('match-liga').value;
+    if (!quinielaId) return this.toast('Selecciona una quiniela', 'err');
+    if (!liga || !round) return this.toast('Selecciona liga y jornada', 'err');
+    if (!homeTeamId || !awayTeamId) return this.toast('Selecciona ambos equipos', 'err');
+    if (homeTeamId === awayTeamId) return this.toast('Los equipos deben ser diferentes', 'err');
 
-    const round =
-      document.getElementById('match-round').value;
-
-    const homeTeamId =
-      document.getElementById('match-home').value;
-
-    const awayTeamId =
-      document.getElementById('match-away').value;
-
-    const matchDate =
-      document.getElementById('match-date').value;
-
-    if (!quinielaId) {
-      this.toast('Selecciona una quiniela', 'err');
-      return;
-    }
-
-    if (!liga || !round) {
-      this.toast('Selecciona liga y jornada', 'err');
-      return;
-    }
-
-    if (!homeTeamId || !awayTeamId) {
-      this.toast('Selecciona ambos equipos', 'err');
-      return;
-    }
-
-    if (homeTeamId === awayTeamId) {
-      this.toast('Los equipos deben ser diferentes', 'err');
-      return;
-    }
-
-    // Se convierte el input a un Timestamp nativo de Firestore
     const dateObj = matchDate ? new Date(matchDate) : null;
     const matchDateVal = (dateObj && !isNaN(dateObj.getTime())) 
       ? firebase.firestore.Timestamp.fromDate(dateObj) 
@@ -1526,7 +1235,6 @@ class QuinielaEngine {
       });
 
       this.toast('✓ Partido publicado', 'ok');
-
       await this.updateAdminTeams();
       this.loadAdminMatches();
 
@@ -1538,373 +1246,170 @@ class QuinielaEngine {
 
   /* ═══ CARGAR PARTIDOS EN ADMIN ═══ */
   async loadAdminMatches() {
-    const quinielaId =
-      document.getElementById(
-        'match-quiniela'
-      ).value;
-
-    const liga =
-      document.getElementById(
-        'match-liga'
-      ).value;
-
-    const sel =
-      document.getElementById(
-        'admin-match-select'
-      );
-
-    const selMan =
-      document.getElementById(
-        'manual-match-select'
-      );
+    const quinielaId = document.getElementById('match-quiniela').value;
+    const liga = document.getElementById('match-liga').value;
+    const sel = document.getElementById('admin-match-select');
+    const selMan = document.getElementById('manual-match-select');
 
     if (!quinielaId || !liga) {
-      sel.innerHTML =
-        '<option value="">— Elige quiniela y liga —</option>';
-
-      selMan.innerHTML =
-        '<option value="">— Elige quiniela y liga —</option>';
-
+      if (sel) sel.innerHTML = '<option value="">— Elige quiniela y liga —</option>';
+      if (selMan) selMan.innerHTML = '<option value="">— Elige quiniela y liga —</option>';
       return;
     }
 
-    sel.innerHTML =
-      '<option value="">Cargando...</option>';
-
-    selMan.innerHTML =
-      '<option value="">Cargando...</option>';
+    if (sel) sel.innerHTML = '<option value="">Cargando...</option>';
+    if (selMan) selMan.innerHTML = '<option value="">Cargando...</option>';
 
     try {
-      const snap =
-        await db.collection('matches')
-          .where('quinielaId', '==', quinielaId)
-          .where('liga', '==', liga)
-          .get();
+      const snap = await db.collection('matches')
+        .where('quinielaId', '==', quinielaId)
+        .where('liga', '==', liga)
+        .get();
 
-      sel.innerHTML =
-        '<option value="">— Selecciona partido —</option>';
-
-      selMan.innerHTML =
-        '<option value="">— Selecciona partido —</option>';
+      if (sel) sel.innerHTML = '<option value="">— Selecciona partido —</option>';
+      if (selMan) selMan.innerHTML = '<option value="">— Selecciona partido —</option>';
 
       const adminMatches = [];
-
-      snap.forEach(d => {
-        adminMatches.push({
-          id: d.id,
-          ...d.data()
-        });
-      });
+      snap.forEach(d => { adminMatches.push({ id: d.id, ...d.data() }); });
 
       this._sortMatchesChronologically(adminMatches);
 
       adminMatches.forEach(m => {
-        const home =
-          getTeam(m.liga, m.homeTeamId);
+        const home = getTeam(m.liga, m.homeTeamId);
+        const away = getTeam(m.liga, m.awayTeamId);
 
-        const away =
-          getTeam(m.liga, m.awayTeamId);
+        const label = `${this._formatMatchDate(m.matchDate)} · ${m.round}: ${home.name} vs ${away.name}${m.status === 'FINISHED' ? ' ✓' : ''}`;
 
-        const label =
-          `${this._formatMatchDate(m.matchDate)} · ${m.round}: ${home.name} vs ${away.name}${m.status === 'FINISHED' ? ' ✓' : ''}`;
+        if (sel) sel.appendChild(new Option(label, m.id));
 
-        const opt1 =
-          new Option(label, m.id);
-
-        sel.appendChild(opt1);
-
-        const opt2 =
-          new Option(label, m.id);
-
-        opt2.dataset.home = home.name;
-        opt2.dataset.away = away.name;
-
-        selMan.appendChild(opt2);
+        if (selMan) {
+          const opt2 = new Option(label, m.id);
+          opt2.dataset.home = home.name;
+          opt2.dataset.away = away.name;
+          selMan.appendChild(opt2);
+        }
       });
 
-      selMan.onchange = () => {
-        const chosen =
-          selMan.options[
-            selMan.selectedIndex
-          ];
+      if (selMan) {
+        selMan.onchange = () => {
+          const chosen = selMan.options[selMan.selectedIndex];
+          const home = chosen?.dataset.home || '';
+          const away = chosen?.dataset.away || '';
+          const selG = document.getElementById('manual-ganador');
 
-        const home =
-          chosen.dataset.home || '';
+          if (!selG) return;
+          selG.innerHTML = '<option value="">— Selecciona —</option>';
 
-        const away =
-          chosen.dataset.away || '';
-
-        const selG =
-          document.getElementById(
-            'manual-ganador'
-          );
-
-        selG.innerHTML =
-          '<option value="">— Selecciona —</option>';
-
-        if (home) {
-          selG.add(
-            new Option(home, home)
-          );
-
-          selG.add(
-            new Option(
-              'Empate',
-              'Empate'
-            )
-          );
-
-          selG.add(
-            new Option(away, away)
-          );
-        }
-      };
+          if (home) {
+            selG.add(new Option(home, home));
+            selG.add(new Option('Empate', 'Empate'));
+            selG.add(new Option(away, away));
+          }
+        };
+      }
 
     } catch (e) {
-      sel.innerHTML =
-        '<option>Error al cargar</option>';
-
-      selMan.innerHTML =
-        '<option>Error al cargar</option>';
-
+      if (sel) sel.innerHTML = '<option>Error al cargar</option>';
+      if (selMan) selMan.innerHTML = '<option>Error al cargar</option>';
       console.error(e);
     }
   }
 
   /* ═══ GUARDAR RESULTADO OFICIAL ═══ */
   async saveOfficialResult() {
-    const matchId =
-      document.getElementById(
-        'admin-match-select'
-      ).value;
+    const matchId = document.getElementById('admin-match-select').value;
+    const gL = document.getElementById('admin-goles-local').value;
+    const gV = document.getElementById('admin-goles-visita').value;
 
-    const gL =
-      document.getElementById(
-        'admin-goles-local'
-      ).value;
+    if (!matchId) return this.toast('Selecciona un partido', 'err');
+    if (gL === '' || gV === '') return this.toast('Ingresa el marcador completo', 'err');
 
-    const gV =
-      document.getElementById(
-        'admin-goles-visita'
-      ).value;
+    const golesLocal = parseInt(gL);
+    const golesVisita = parseInt(gV);
 
-    if (!matchId) {
-      this.toast(
-        'Selecciona un partido',
-        'err'
-      );
-      return;
-    }
-
-    if (gL === '' || gV === '') {
-      this.toast(
-        'Ingresa el marcador completo',
-        'err'
-      );
-      return;
-    }
-
-    const golesLocal =
-      parseInt(gL);
-
-    const golesVisita =
-      parseInt(gV);
-
-    const mDoc =
-      await db.collection('matches')
-        .doc(matchId)
-        .get();
-
-    if (!mDoc.exists) {
-      this.toast(
-        'Partido no encontrado',
-        'err'
-      );
-      return;
-    }
+    const mDoc = await db.collection('matches').doc(matchId).get();
+    if (!mDoc.exists) return this.toast('Partido no encontrado', 'err');
 
     const m = mDoc.data();
-
-    const home =
-      getTeam(
-        m.liga,
-        m.homeTeamId
-      );
-
-    const away =
-      getTeam(
-        m.liga,
-        m.awayTeamId
-      );
+    const home = getTeam(m.liga, m.homeTeamId);
+    const away = getTeam(m.liga, m.awayTeamId);
 
     let ganador;
+    if (golesLocal > golesVisita) ganador = home.name;
+    else if (golesVisita > golesLocal) ganador = away.name;
+    else ganador = 'Empate';
 
-    if (golesLocal > golesVisita) {
-      ganador = home.name;
-    } else if (golesVisita > golesLocal) {
-      ganador = away.name;
-    } else {
-      ganador = 'Empate';
-    }
-
-    const resultado = {
-      golesLocal,
-      golesVisita,
-      ganador
-    };
+    const resultado = { golesLocal, golesVisita, ganador };
 
     try {
-      await db.collection('matches')
-        .doc(matchId)
-        .update({
-          golesLocal,
-          golesVisita,
-          ganador,
-          status: 'FINISHED'
-        });
+      await db.collection('matches').doc(matchId).update({
+        golesLocal,
+        golesVisita,
+        ganador,
+        status: 'FINISHED'
+      });
 
-      const predSnap =
-        await db.collection('predictions')
-          .where('matchId', '==', matchId)
-          .get();
+      const predSnap = await db.collection('predictions')
+        .where('matchId', '==', matchId)
+        .get();
 
-      const batch =
-        db.batch();
+      const batch = db.batch();
 
       predSnap.forEach(d => {
         const p = d.data();
-
         if (p.calculado) return;
 
-        const acertoGanador =
-          p.ganador === ganador;
-
         let pts = 0;
+        const tieneMarcador = p.golesLocal !== null && p.golesVisita !== null;
 
-        if (acertoGanador) {
-          const tieneMarcador =
-            p.golesLocal != null &&
-            p.golesVisita != null;
-
-          pts =
-            tieneMarcador &&
-            p.golesLocal === golesLocal &&
-            p.golesVisita === golesVisita
-              ? 5
-              : 3;
+        if (tieneMarcador) {
+          if (p.golesLocal === golesLocal && p.golesVisita === golesVisita) {
+            pts = 5;
+          } else if (Math.sign(p.golesLocal - p.golesVisita) === Math.sign(golesLocal - golesVisita)) {
+            pts = 3;
+          }
+        } else if (p.ganador === ganador) {
+          pts = 3;
         }
 
-        batch.update(
-          d.ref,
-          {
-            pts,
-            calculado: true,
-            resultado
-          }
-        );
+        batch.update(d.ref, { pts, calculado: true, resultado });
       });
 
       await batch.commit();
 
-      this.toast(
-        `✓ ${ganador} · ${golesLocal}–${golesVisita} · Puntos calculados`,
-        'ok'
-      );
-
+      this.toast(`✓ ${ganador} · ${golesLocal}–${golesVisita} · Puntos calculados`, 'ok');
       this.loadAdminMatches();
 
     } catch (e) {
-      this.toast(
-        'Error al guardar resultado',
-        'err'
-      );
-
+      this.toast('Error al guardar resultado', 'err');
       console.error(e);
     }
   }
 
   /* ═══ CARGA TARDÍA MANUAL ═══ */
   async saveManualPrediction() {
-    const matchId =
-      document.getElementById(
-        'manual-match-select'
-      ).value;
+    const matchId = document.getElementById('manual-match-select').value;
+    const username = document.getElementById('manual-username').value.trim();
+    const ganador = document.getElementById('manual-ganador').value;
+    const gL = document.getElementById('manual-goles-local').value;
+    const gV = document.getElementById('manual-goles-visita').value;
 
-    const username =
-      document.getElementById(
-        'manual-username'
-      ).value.trim();
+    if (!matchId) return this.toast('Selecciona un partido', 'err');
+    if (!username) return this.toast('Escribe el nombre del jugador', 'err');
+    if (!ganador) return this.toast('Selecciona un ganador', 'err');
 
-    const ganador =
-      document.getElementById(
-        'manual-ganador'
-      ).value;
-
-    const gL =
-      document.getElementById(
-        'manual-goles-local'
-      ).value;
-
-    const gV =
-      document.getElementById(
-        'manual-goles-visita'
-      ).value;
-
-    if (!matchId) {
-      this.toast(
-        'Selecciona un partido',
-        'err'
-      );
-      return;
-    }
-
-    if (!username) {
-      this.toast(
-        'Escribe el nombre del jugador',
-        'err'
-      );
-      return;
-    }
-
-    if (!ganador) {
-      this.toast(
-        'Selecciona un ganador',
-        'err'
-      );
-      return;
-    }
-
-    const chosen =
-      document.getElementById(
-        'manual-match-select'
-      ).selectedOptions[0];
-
-    const homeName =
-      chosen.dataset.home || '';
-
-    const awayName =
-      chosen.dataset.away || '';
+    const chosen = document.getElementById('manual-match-select').selectedOptions[0];
+    const homeName = chosen?.dataset.home || '';
+    const awayName = chosen?.dataset.away || '';
 
     try {
-      const uSnap =
-        await db.collection('users')
-          .where(
-            'username',
-            '==',
-            username
-          )
-          .get();
+      const uSnap = await db.collection('users')
+        .where('username', '==', username)
+        .get();
 
-      if (uSnap.empty) {
-        this.toast(
-          `No existe el jugador "${username}"`,
-          'err'
-        );
-        return;
-      }
+      if (uSnap.empty) return this.toast(`No existe el jugador "${username}"`, 'err');
 
-      const uid =
-        uSnap.docs[0].id;
+      const uid = uSnap.docs[0].id;
 
       await db.collection('predictions')
         .doc(`${uid}_${matchId}`)
@@ -1915,47 +1420,22 @@ class QuinielaEngine {
           homeName,
           awayName,
           ganador,
-          golesLocal:
-            gL !== ''
-              ? parseInt(gL)
-              : null,
-          golesVisita:
-            gV !== ''
-              ? parseInt(gV)
-              : null,
+          golesLocal: gL !== '' ? parseInt(gL) : null,
+          golesVisita: gV !== '' ? parseInt(gV) : null,
           pts: 0,
           calculado: false,
-          updatedAt:
-            firebase.firestore.FieldValue.serverTimestamp()
+          updatedAt: firebase.firestore.FieldValue.serverTimestamp()
         });
 
-      this.toast(
-        `✓ Pronóstico de ${username} guardado`,
-        'ok'
-      );
+      this.toast(`✓ Pronóstico de ${username} guardado`, 'ok');
 
-      document.getElementById(
-        'manual-username'
-      ).value = '';
-
-      document.getElementById(
-        'manual-ganador'
-      ).value = '';
-
-      document.getElementById(
-        'manual-goles-local'
-      ).value = '';
-
-      document.getElementById(
-        'manual-goles-visita'
-      ).value = '';
+      document.getElementById('manual-username').value = '';
+      document.getElementById('manual-ganador').value = '';
+      document.getElementById('manual-goles-local').value = '';
+      document.getElementById('manual-goles-visita').value = '';
 
     } catch (e) {
-      this.toast(
-        'Error al guardar pronóstico manual',
-        'err'
-      );
-
+      this.toast('Error al guardar pronóstico manual', 'err');
       console.error(e);
     }
   }
@@ -1968,35 +1448,24 @@ auth.onAuthStateChanged(async user => {
   if (user) {
     window.app.currentUser = user;
 
-    const uDoc =
-      await db.collection('users')
-        .doc(user.uid)
-        .get();
-
-    const username =
-      uDoc.exists
-        ? (
-            uDoc.data().username ||
-            'Usuario'
-          )
-        : 'Usuario';
+    const uDoc = await db.collection('users').doc(user.uid).get();
+    const username = uDoc.exists ? (uDoc.data().username || 'Usuario') : 'Usuario';
 
     window.app.currentUsername = username;
 
-    document.getElementById(
-      'user-display'
-    ).textContent = username;
+    const uDisp = document.getElementById('user-display');
+    if (uDisp) uDisp.textContent = username;
 
   } else {
     window.app.currentUser = null;
     window.app.currentUsername = null;
     window.app.adminUnlocked = false;
 
-    document.getElementById(
-      'user-display'
-    ).textContent = 'Invitado';
+    const uDisp = document.getElementById('user-display');
+    if (uDisp) uDisp.textContent = 'Invitado';
   }
 });
+
 
 
 
