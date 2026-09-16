@@ -1,5 +1,5 @@
 /* ═══════════════════════════════════════════
-   QUINIELA LUAN v2 — MOTOR PRINCIPAL (COMPLETO Y MEJORADO)
+   QUINIELA LUAN — MOTOR PRINCIPAL (COMPLETO)
    ═══════════════════════════════════════════ */
 
 /* ── FIREBASE CONFIG ── */
@@ -579,68 +579,29 @@ class QuinielaEngine {
   }
 
   /* ═══════════════════════════════════════════
-     SISTEMA DE ANOTACIÓN INTELIGENTE CON SWIPE
+     SISTEMA DE BOTONES INTELIGENTES DE GOLES (0-7)
   ═══════════════════════════════════════════ */
 
-  _renderSwipePicker(matchId, role, min, max, currentVal) {
-    let optionsHTML = '';
+  _renderGoalButtons(matchId, role, min, max, currentVal) {
+    let buttonsHTML = '<div class="goal-buttons-row" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:4px;">';
+    
     for (let i = min; i <= max; i++) {
-      optionsHTML += `<span class="score-opt ${i === currentVal ? 'selected' : ''}">${i}</span>`;
+      const isSelected = i === currentVal ? 'selected' : '';
+      const activeStyle = isSelected ? 'background:var(--accent-color, #2ea643);border-color:var(--accent-color, #2ea643);color:#fff;' : 'background:rgba(255,255,255,0.08);border:1px solid var(--border-color);color:#fff;';
+      
+      buttonsHTML += `
+        <button 
+          type="button" 
+          class="btn-goal ${isSelected}" 
+          style="flex:1;min-width:36px;height:38px;border-radius:6px;font-weight:bold;font-size:1rem;cursor:pointer;${activeStyle}"
+          onclick="app._updatePredictionState('${matchId}', '${role}', ${i})">
+          ${i}
+        </button>
+      `;
     }
-
-    const offset = -((currentVal - min) * 60);
-
-    return `
-      <div class="swipe-picker" id="picker-${matchId}-${role}" data-match="${matchId}" data-role="${role}" data-val="${currentVal}" data-min="${min}" data-max="${max}">
-        <div class="swipe-track" style="transform: translateX(${offset}px);">
-          ${optionsHTML}
-        </div>
-      </div>
-    `;
-  }
-
-  _initSwipeEvents(matchId) {
-    const pickers = document.querySelectorAll(`[id^="picker-${matchId}"]`);
-
-    pickers.forEach(picker => {
-      let startX = 0;
-      let isDragging = false;
-
-      const onStart = (e) => {
-        isDragging = true;
-        startX = e.touches ? e.touches[0].clientX : e.clientX;
-      };
-
-      const onMove = (e) => {
-        if (!isDragging) return;
-        const currentX = e.touches ? e.touches[0].clientX : e.clientX;
-        const diffX = currentX - startX;
-
-        let val = parseInt(picker.dataset.val);
-        const min = parseInt(picker.dataset.min);
-        const max = parseInt(picker.dataset.max);
-
-        if (diffX < -20 && val < max) {
-          val++;
-          isDragging = false;
-          this._updatePredictionState(matchId, picker.dataset.role, val);
-        } else if (diffX > 20 && val > min) {
-          val--;
-          isDragging = false;
-          this._updatePredictionState(matchId, picker.dataset.role, val);
-        }
-      };
-
-      const onEnd = () => { isDragging = false; };
-
-      picker.addEventListener('touchstart', onStart, { passive: true });
-      picker.addEventListener('touchmove', onMove, { passive: true });
-      picker.addEventListener('touchend', onEnd);
-
-      picker.addEventListener('mousedown', onStart);
-      picker.addEventListener('mousemove', onMove);
-      picker.addEventListener('mouseup', onEnd);
-    });
+    
+    buttonsHTML += '</div>';
+    return buttonsHTML;
   }
 
   _updatePredictionState(matchId, changedRole, newValue) {
@@ -663,7 +624,7 @@ class QuinielaEngine {
       awayGoals = newValue;
     }
 
-    // Pasos 3 y 4: Filtrado inteligente y regla 1-0
+    // Pasos 3 y 4: Filtrado inteligente y regla de 1-0 automático
     if (winner === 'Home') {
       if (homeGoals === 1) awayGoals = 0;
       else if (awayGoals >= homeGoals) awayGoals = homeGoals - 1;
@@ -684,9 +645,9 @@ class QuinielaEngine {
     const card = document.getElementById(`card-${matchId}`);
     if (!card) return;
 
-    const winner = card.dataset.winner;
-    const hG = parseInt(card.dataset.homeGoals);
-    const aG = parseInt(card.dataset.awayGoals);
+    const winner = card.dataset.winner || 'Home';
+    const hG = parseInt(card.dataset.homeGoals || 1);
+    const aG = parseInt(card.dataset.awayGoals || 0);
 
     const container = document.getElementById(`controls-${matchId}`);
     if (!container) return;
@@ -705,25 +666,24 @@ class QuinielaEngine {
     }
 
     container.innerHTML = `
-      <div class="winner-row">
-        <button class="winner-btn ${winner === 'Home' ? 'selected' : ''}" onclick="app._updatePredictionState('${matchId}', 'winner', 'Home')">Local</button>
-        <button class="winner-btn ${winner === 'Draw' ? 'selected' : ''}" onclick="app._updatePredictionState('${matchId}', 'winner', 'Draw')">Empate</button>
-        <button class="winner-btn ${winner === 'Away' ? 'selected' : ''}" onclick="app._updatePredictionState('${matchId}', 'winner', 'Away')">Visitante</button>
+      <div class="winner-row" style="display:flex;gap:8px;margin-bottom:12px;">
+        <button type="button" class="winner-btn ${winner === 'Home' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Home')">Local</button>
+        <button type="button" class="winner-btn ${winner === 'Draw' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Draw')">Empate</button>
+        <button type="button" class="winner-btn ${winner === 'Away' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Away')">Visitante</button>
       </div>
 
-      <div class="swipe-container-row">
-        <div class="picker-box">
-          <label>Goles Local</label>
-          ${this._renderSwipePicker(matchId, 'homeG', homeMin, homeMax, hG)}
+      <div class="goals-selection-box" style="background:rgba(255,255,255,0.03);padding:10px;border-radius:8px;border:1px solid var(--border-color);">
+        <div class="picker-group">
+          <label style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">GOLES LOCAL</label>
+          ${this._renderGoalButtons(matchId, 'homeG', homeMin, homeMax, hG)}
         </div>
-        <div class="picker-box">
-          <label>Goles Visita</label>
-          ${this._renderSwipePicker(matchId, 'awayG', awayMin, awayMax, aG)}
+
+        <div class="picker-group" style="margin-top:10px;">
+          <label style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">GOLES VISITANTE</label>
+          ${this._renderGoalButtons(matchId, 'awayG', awayMin, awayMax, aG)}
         </div>
       </div>
     `;
-
-    this._initSwipeEvents(matchId);
   }
 
   /* ═══════════════════════════════════════════
@@ -1465,9 +1425,3 @@ auth.onAuthStateChanged(async user => {
     if (uDisp) uDisp.textContent = 'Invitado';
   }
 });
-
-
-
-
-
-
