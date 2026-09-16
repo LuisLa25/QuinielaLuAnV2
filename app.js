@@ -641,7 +641,7 @@ class QuinielaEngine {
     this._renderMatchControls(matchId);
   }
 
-  _renderMatchControls(matchId) {
+ _renderMatchControls(matchId) {
     const card = document.getElementById(`card-${matchId}`);
     if (!card) return;
 
@@ -652,7 +652,7 @@ class QuinielaEngine {
     const container = document.getElementById(`controls-${matchId}`);
     if (!container) return;
 
-    let homeMin = 0, homeMax = 7, awayMin = 0, awayMax = 7;
+    let homeMin = 1, homeMax = 7, awayMin = 0, awayMax = 0;
 
     if (winner === 'Home') {
       homeMin = 1; homeMax = 7;
@@ -660,29 +660,36 @@ class QuinielaEngine {
     } else if (winner === 'Away') {
       awayMin = 1; awayMax = 7;
       homeMin = 0; homeMax = Math.max(0, aG - 1);
-    } else {
-      homeMin = 0; homeMax = 7;
-      awayMin = homeMin; awayMax = homeMax;
     }
 
-    container.innerHTML = `
-      <div class="winner-row" style="display:flex;gap:8px;margin-bottom:12px;">
-        <button type="button" class="winner-btn ${winner === 'Home' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Home')">Local</button>
-        <button type="button" class="winner-btn ${winner === 'Draw' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Draw')">Empate</button>
-        <button type="button" class="winner-btn ${winner === 'Away' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Away')">Visitante</button>
+    const golesBox = winner === 'Draw' ? `
+      <div style="background:rgba(255,255,255,0.03);padding:10px;border-radius:8px;border:1px solid var(--border-color);">
+        <label style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">GOLES EMPATE (mismo para ambos)</label>
+        ${this._renderGoalButtons(matchId, 'homeG', 0, 7, hG)}
+        <div style="margin-top:8px;text-align:center;font-size:0.85rem;color:var(--gold-color);font-weight:600;">
+          Resultado: ${hG} – ${hG}
+        </div>
       </div>
-
-      <div class="goals-selection-box" style="background:rgba(255,255,255,0.03);padding:10px;border-radius:8px;border:1px solid var(--border-color);">
-        <div class="picker-group">
+    ` : `
+      <div style="background:rgba(255,255,255,0.03);padding:10px;border-radius:8px;border:1px solid var(--border-color);">
+        <div>
           <label style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">GOLES LOCAL</label>
           ${this._renderGoalButtons(matchId, 'homeG', homeMin, homeMax, hG)}
         </div>
-
-        <div class="picker-group" style="margin-top:10px;">
+        <div style="margin-top:10px;">
           <label style="display:block;font-size:0.75rem;color:var(--text-muted);margin-bottom:4px;font-weight:600;">GOLES VISITANTE</label>
           ${this._renderGoalButtons(matchId, 'awayG', awayMin, awayMax, aG)}
         </div>
       </div>
+    `;
+
+    container.innerHTML = `
+      <div style="display:flex;gap:8px;margin-bottom:12px;">
+        <button type="button" class="winner-btn ${winner === 'Home' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Home')">Local</button>
+        <button type="button" class="winner-btn ${winner === 'Draw' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Draw')">Empate</button>
+        <button type="button" class="winner-btn ${winner === 'Away' ? 'selected' : ''}" style="flex:1;padding:8px;" onclick="app._updatePredictionState('${matchId}', 'winner', 'Away')">Visitante</button>
+      </div>
+      ${golesBox}
     `;
   }
 
